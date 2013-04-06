@@ -1,6 +1,8 @@
 var mongo = require('mongodb');
 
-exports.open = function(a, b, c) {
+exports.Server = mongo.Server;
+
+exports.open = function(a, b, c, auth) {
     
   var COLLECTION = {};
   var DB_READY_LISTENERS = [];
@@ -40,8 +42,11 @@ exports.open = function(a, b, c) {
       collectionWrapper.connection = collection;
       pendingRequests = collectionWrapper.pendingRequests;
       COLLECTION[collection.collectionName] = collection;
-      for (i = 0; request = pendingRequests[i]; i++)
-        collection[request.method].apply(collection, request.arguments);
+      if (pendingRequests) {
+        pendingRequests.forEach(function (request) {
+          collection[request.method].apply(collection, request.arguments);
+        });
+      }
     }
   }
   
@@ -83,7 +88,17 @@ exports.open = function(a, b, c) {
   if (typeof a === 'string') {
     DB = new mongo.Db(a, b, c);
     ERROR_CALLBACK = c ? c.error || console.log : console.log;
-    DB.open(dbReady);
+    var handle = function (err, base) {
+      if (err) {
+        ERROR_CALLBACK(err);
+      } else {
+        base.authenticate(auth.user, auth.pass, function (err, state) {
+          if (err || !state) ERROR_CALLBACK(err);
+          else dbReady(err, base);
+        });
+      }
+    };
+    DB.open(auth ? handle : dbReady);
   } else  {
     a || (a = {});
     ERROR_CALLBACK = a.error || console.log;
